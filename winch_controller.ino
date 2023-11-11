@@ -26,7 +26,8 @@ String direction_winch_prev = "forward";
 float esc_speed = 0;
 float esc_speed_prescaler = 1; // angka ini yang dikalibrasi dengan konstruksi mekanikal
 
-
+unsigned long lcd_time;
+unsigned long lcd_time_prev;
 void setup() {
   myESC.arm();  
   pinMode(proximity_1, INPUT_PULLUP);
@@ -50,6 +51,38 @@ void loop() {
     Serial.println(rpm); // Tampilkan RPM di Serial Monitor
   }
 
+
+  lcd_time = millis() - lcd_time_prev;
+  if (lcd_time > 1000){
+    lcd.setCursor(0,0);
+    lcd.print("WINCH CONTROLLER");
+    
+    lcd.setCursor(0,1);
+    lcd.print("WINCH SPEED : ");
+    
+    if (rpm < 10){
+    lcd.setCursor(15,1);
+    lcd.print(rpm);
+    lcd.setCursor(16,1);
+    lcd.print("  ");
+    }
+
+    
+    if ((rpm > 10)&&(rpm < 100)){
+    lcd.setCursor(15,1);
+    lcd.print(rpm);
+    lcd.setCursor(17,1);
+    lcd.print(" ");
+    }
+
+    if (rpm > 100){
+    lcd.setCursor(15,1);
+    lcd.print(rpm);
+    }
+
+    
+  }
+  
   if (digitalRead(proximity_1) == HIGH){
     direction_winch = "forward";
   }
@@ -75,6 +108,16 @@ void loop() {
 
   if (direction_winch == direction_winch_prev){
     myESC.arm();  
+    
+    if (direction_winch == "reverse"){
+    lcd.setCursor(0,2);
+    lcd.print("DIRECTION : REVERSE");
+    }
+    if (direction_winch == "forward"){
+    lcd.setCursor(0,2);
+    lcd.print("DIRECTION : FORWARD");
+    }
+    
   }
   }
   

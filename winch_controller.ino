@@ -1,129 +1,132 @@
-#include "ESC.h"
-#define LED_PIN (13)                    // Pin for the LED 
-#define POT_PIN (A0)                    // Analog pin used to connect the potentiometer
-
-ESC myESC (9, 1000, 2000, 500);         // ESC_Name (PIN, Minimum Value, Maximum Value, Arm Value)
-
-
-#include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
-LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+#define prox1 3 //ujung kanan
+#define prox2 4 //ujung kiri
 
-int val;                                // variable to read the value from the analog pin
+#define sw 10 // toggle switch
+#define hijau 8 // lampu
+#define fwd 9
+#define off 7
 
-volatile unsigned long pulseCount = 0; // Jumlah pulsa interrupt
-unsigned long previousMillis = 0;     // Waktu sebelumnya saat menghitung pulsa
-unsigned long rpm = 0;                // Variabel untuk menyimpan hasil perhitungan RPM
+#define CLK 9
+#define DT 2
 
-const int interruptPin = 2; // Pin yang terhubung dengan interrupt (INT0 pada Arduino Uno)
-int proximity_1 = 5;
-int proximity_2 = 6;
-int start_pin = 7;
-String direction_winch = "forward";
-String direction_winch_prev = "forward";
+const int pwmPin = 11;  // Pin PWM pada Arduino Uno
+const int rpmTarget = 1000;  // Kecepatan target dalam RPM
 
-float esc_speed = 0;
-float esc_speed_prescaler = 1; // angka ini yang dikalibrasi dengan konstruksi mekanikal
+const int sensorPin = 2;  // Pin digital yang terhubung ke output sensor
+volatile unsigned long count = 0;  // Variabel untuk menyimpan jumlah putaran
+const float jarakAntarGigi = 2.0;  // Jarak antara setiap gigi dalam sentimeter
 
-unsigned long lcd_time;
-unsigned long lcd_time_prev;
+unsigned long pulse_per_second = 0;
+
+unsigned long time_per_second;
+unsigned long time_per_second_prev;
+
+int currentStateCLK;
+int lastStateCLK;
+int p1;
+int p2;
+bool p1_lock;
+bool p2_lock;
+
+float counter = 0;
+
+bool direction_motor;
+bool initializing;
+
 void setup() {
-  myESC.arm();  
-  pinMode(proximity_1, INPUT_PULLUP);
-  pinMode(proximity_2, INPUT_PULLUP);
-  pinMode(start_pin, INPUT_PULLUP);
-  Serial.begin(9600);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), countPulses, FALLING); // Mengaktifkan interrupt pada falling edge
+
   lcd.init();
+  lcd.backlight();
+  pinMode(prox1,INPUT_PULLUP);
+  pinMode(prox2,INPUT_PULLUP);
+  pinMode(off,INPUT_PULLUP);
+
+  pinMode(pwmPin, OUTPUT);
+  analogWrite(pwmPin, 0);  // Inisialisasi PWM dengan duty cycle 0
+
+  pinMode(sw,INPUT_PULLUP);
+  pinMode(hijau,OUTPUT);
+  pinMode(fwd,OUTPUT);
+
+  pinMode(sensorPin, INPUT_PULLUP);
+  attachInterrupt(0, updateEncoder, CHANGE);
+  initializing = false;
+
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
-
-  // Menghitung RPM setiap 100 milidetik (0,1 detik)
-  if (currentMillis - previousMillis >= 100) {
-    detachInterrupt(digitalPinToInterrupt(interruptPin)); // Matikan interrupt sementara
-    rpm = (pulseCount * 60 * 10) / 11; // Menghitung RPM (misalnya, 110 pulsa per putaran)
-    pulseCount = 0; // Reset jumlah pulsa
-    previousMillis = currentMillis; // Simpan waktu sebelumnya
-    attachInterrupt(digitalPinToInterrupt(interruptPin), countPulses, FALLING); // Aktifkan interrupt kembali
-    Serial.println(rpm); // Tampilkan RPM di Serial Monitor
-  }
-
-
-  lcd_time = millis() - lcd_time_prev;
-  if (lcd_time > 1000){
-    lcd.setCursor(0,0);
-    lcd.print("WINCH CONTROLLER");
+    time_per_second = millis() - time_per_second_prev;
     
-    lcd.setCursor(0,1);
-    lcd.print("WINCH SPEED : ");
-    
-    if (rpm < 10){
-    lcd.setCursor(15,1);
-    lcd.print(rpm);
-    lcd.setCursor(16,1);
-    lcd.print("  ");
+    if (time_per_second > 1000){
+      pulse_per_second = counter;
+      time_per_second_prev = millis();
+      counter = 0;
     }
+     
+    if (digitalRead(sw) == HIGH) {
+      digitalWrite(hijau, HIGH);
+      int p1 = digitalRead(prox1);
+      int p2 = digitalRead(prox2);
 
-    
-    if ((rpm > 10)&&(rpm < 100)){
-    lcd.setCursor(15,1);
-    lcd.print(rpm);
-    lcd.setCursor(17,1);
-    lcd.print(" ");
+      if (initializing == false){
+          if (counter  > 0){
+              direction_motor = true;
+          }
+          else{
+              direction_motor = false;
+          }
+          p1_lock = false;
+          p2_lock = false;
+      }
+
+        
+      if (p1 == HIGH && p2 == LOW && p1_lock == false){
+          initializing == true;
+          p1_lock = true;
+          p2_lock = false;
+          direction_motor = !direction_motor;   
+      }
+
+        
+       if (p1 == LOW && p2 == HIGH && p2_lock == false){
+           initializing == true;
+           p1_lock = false;
+           p2_lock = true;
+           direction_motor = !direction_motor;
+       }     
+       }  
+
+
+
+
+
+        
+    else{
+        digitalWrite(hijau, LOW);
+        initializing = false;
+        lcd.clear();
     }
-
-    if (rpm > 100){
-    lcd.setCursor(15,1);
-    lcd.print(rpm);
-    }
-
+    digitalWrite(fwd, direction_motor);
+        
     
-  }
-  
-  if (digitalRead(proximity_1) == HIGH){
-    direction_winch = "forward";
-  }
 
-  
-  if (digitalRead(proximity_2) == HIGH){
-    direction_winch = "reverse";
-  }
-
-  esc_speed = rpm * esc_speed_prescaler;
-  if (esc_speed > 500){
-    esc_speed = 500;
-  }
-  if (digitalRead(start_pin) == HIGH){
-  
-  if (direction_winch == "forward"){
-    myESC.speed(1500 + esc_speed);
-  }
-  
-  if (direction_winch == "reverse"){
-    myESC.speed(1500 - esc_speed);
-  }
-
-  if (direction_winch == direction_winch_prev){
-    myESC.arm();  
-    
-    if (direction_winch == "reverse"){
-    lcd.setCursor(0,2);
-    lcd.print("DIRECTION : REVERSE");
-    }
-    if (direction_winch == "forward"){
-    lcd.setCursor(0,2);
-    lcd.print("DIRECTION : FORWARD");
-    }
-    
-  }
-  }
-  
-  direction_winch_prev = direction_winch;
 }
 
-void countPulses() {
-  pulseCount++; // Tambahkan jumlah pulsa saat interrupt terjadi
+
+void updateEncoder(){
+  
+  currentStateCLK = digitalRead(CLK);
+  if ((currentStateCLK != lastStateCLK)  && (currentStateCLK == 1)){
+    if (digitalRead(DT) != currentStateCLK) {
+      counter = counter - 1;
+    } else {
+      counter = counter + 1;
+    }
+  }
+  
+  lastStateCLK = currentStateCLK;
+  
 }

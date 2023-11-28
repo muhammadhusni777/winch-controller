@@ -68,8 +68,8 @@ void loop() {
      
     if (digitalRead(sw) == HIGH) {
       digitalWrite(hijau, HIGH);
-      int p1 = digitalRead(prox1);
-      int p2 = digitalRead(prox2);
+      int p1 = !digitalRead(prox1);
+      int p2 = !digitalRead(prox2);
 
       if (initializing == false){
           if (counter  > 0){
@@ -83,20 +83,30 @@ void loop() {
       }
 
         
-      if (p1 == HIGH && p2 == LOW && p1_lock == false){
-          initializing == true;
+      if (p1 == HIGH && p1_lock == false){
+          initializing = true;
           p1_lock = true;
           p2_lock = false;
           direction_motor = !direction_motor;   
       }
-
         
-       if (p1 == LOW && p2 == HIGH && p2_lock == false){
-           initializing == true;
+       if (p2 == HIGH && p2_lock == false){
+           initializing = true;
            p1_lock = false;
            p2_lock = true;
            direction_motor = !direction_motor;
-       }     
+       }
+       
+       if (direction_motor == true){
+        lcd.setCursor(0,1);
+        lcd.print("forward");
+       } else {
+        lcd.setCursor(0,1);
+        lcd.print("reverse");
+       }
+
+
+            
        }  
 
 
